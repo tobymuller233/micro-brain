@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 from PIL import Image
 import os, sys
 
-from tensorflow.keras.applications.vgg19 import preprocess_input
-
+from keras import applications
+#from tensorflow.keras.applications.vgg19 import preprocess_input
 from numpy.random import randint
 from random import randrange
 
@@ -432,7 +432,7 @@ def get_vgg_features(image, model):
     return:
     vector of image features
     """
-    image_proc = preprocess_input(np.expand_dims(image, 0))
+    image_proc = applications.preprocess_input(np.expand_dims(image, 0))
     return model.predict(image_proc).flatten()
 
 def get_perceptual_sim(image1, image2, model, bgr=True):

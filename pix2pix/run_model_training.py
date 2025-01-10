@@ -9,7 +9,8 @@ from utils import load_dataset
 from utils import summarise_performance
 from utils import get_res_and_size
 
-from tensorflow.keras.utils import plot_model
+from keras import utils as utils_keras
+#from tensorflow.keras.utils import plot_model
 
 import json
 

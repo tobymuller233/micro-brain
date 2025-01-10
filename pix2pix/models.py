@@ -1,23 +1,15 @@
 import numpy as np
 import pandas as pd
 
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.initializers import RandomNormal
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input
-from tensorflow.keras.layers import Conv2D
-from tensorflow.keras.layers import Conv2DTranspose
-from tensorflow.keras.layers import UpSampling2D
-from tensorflow.keras.layers import LeakyReLU
-from tensorflow.keras.layers import Activation
-from tensorflow.keras.layers import Concatenate
-from tensorflow.keras.layers import BatchNormalization
-from tensorflow.keras.layers import Dropout
-from tensorflow.keras.losses import MeanAbsoluteError
-from tensorflow.keras.applications.vgg19 import VGG19
+from keras import optimizers
+from keras import initializers
+from keras import models
+from keras import layers
+from keras import losses
+from keras import applications
+from keras import backend as K
 
-import tensorflow.keras.backend as K
-import tensorflow as tf
+import keras
 from utils import generate_real_samples
 from utils import generate_fake_samples
 from utils import summarise_performance
@@ -30,8 +22,8 @@ def get_perception_model(image_size, pooling='avg'):
     assert len(image_size)==3, 'ValueError: check image dimensions'
 
     # load VGG19 model for feature extraction
-    input_tensor = Input(shape=image_size)
-    vggmodel = VGG19(input_tensor=input_tensor, weights='imagenet', include_top=False, pooling=pooling)
+    input_tensor = layers.Input(shape=image_size)
+    vggmodel = applications.VGG19(input_tensor=input_tensor, weights='imagenet', include_top=False, pooling=pooling)
 
     return vggmodel
 
@@ -74,43 +66,43 @@ def define_discriminator(image_src_shape, image_trg_shape, initial_filters=64, d
     assert depth in [1, 2, 3], 'depth field value not allowed'
 
     # weight initialization
-    init = RandomNormal(stddev=0.02)
+    init = initializers.RandomNormal(stddev=0.02)
 
     # source image input
-    in_src_image = Input(shape=image_src_shape)
+    in_src_image = layers.Input(shape=image_src_shape)
 
     # target image input
-    in_target_image = Input(shape=image_trg_shape)
+    in_target_image = layers.Input(shape=image_trg_shape)
 
     # concatenate images channel-wise
-    merged = Concatenate()([in_src_image, in_target_image])
+    merged = layers.Concatenate()([in_src_image, in_target_image])
 
     # first layer
-    d = Conv2D(initial_filters, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(merged)
-    d = LeakyReLU(alpha=0.2)(d)
+    d = layers.Conv2D(initial_filters, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(merged)
+    d = layers.LeakyReLU(alpha=0.2)(d)
 
     for i in range(1,depth):
         mult = min(2 ** i, 8)
 
-        d = Conv2D(initial_filters * mult, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
-        d = BatchNormalization()(d)
-        d = LeakyReLU(alpha=0.2)(d)
+        d = layers.Conv2D(initial_filters * mult, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
+        d = layers.BatchNormalization()(d)
+        d = layers.LeakyReLU(alpha=0.2)(d)
 
     # 2nd last layer - stride 1
     mult = min(2 ** depth, 8)
-    d = Conv2D(initial_filters * mult, (4,4), strides=(1,1), padding='same', kernel_initializer=init)(d)
-    d = BatchNormalization()(d)
-    d = LeakyReLU(alpha=0.2)(d)
+    d = layers.Conv2D(initial_filters * mult, (4,4), strides=(1,1), padding='same', kernel_initializer=init)(d)
+    d = layers.BatchNormalization()(d)
+    d = layers.LeakyReLU(alpha=0.2)(d)
 
     # patch output
-    d = Conv2D(1, (4,4), strides=(1,1), padding='same', kernel_initializer=init)(d)
-    patch_out = Activation('sigmoid')(d)
+    d = layers.Conv2D(1, (4,4), strides=(1,1), padding='same', kernel_initializer=init)(d)
+    patch_out = layers.Activation('sigmoid')(d)
 
     # define model
-    model = Model([in_src_image, in_target_image], patch_out)
+    model = models.Model([in_src_image, in_target_image], patch_out)
 
     # compile model
-    opt = Adam(lr=lr, beta_1=0.5)
+    opt = optimizers.Adam(lr=lr, beta_1=0.5)
     model.compile(loss='binary_crossentropy', optimizer=opt, loss_weights=[0.5])
 
     return model
@@ -119,48 +111,48 @@ def define_discriminator(image_src_shape, image_trg_shape, initial_filters=64, d
 
 def define_encoder_block(layer_in, n_filters, batchnorm=True):
     # weight initialization
-    init = RandomNormal(stddev=0.02)
+    init = initializers.RandomNormal(stddev=0.02)
     # add downsampling layer
-    g = Conv2D(n_filters, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(layer_in)
+    g = layers.Conv2D(n_filters, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(layer_in)
 
     # conditionally add batch normalization
     if batchnorm:
-        g = BatchNormalization()(g, training=True)
+        g = layers.BatchNormalization()(g, training=True)
 
     # leaky relu activation
-    g = LeakyReLU(alpha=0.2)(g)
+    g = layers.LeakyReLU(alpha=0.2)(g)
 
     return g
 
 def decoder_block(layer_in, skip_in, n_filters, dropout=True):
     # weight initialization
-    init = RandomNormal(stddev=0.02)
+    init = initializers.RandomNormal(stddev=0.02)
     # add upsampling layer
     #g = Conv2DTranspose(n_filters, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(layer_in)
-    g = UpSampling2D(interpolation='nearest')(layer_in)
-    g = Conv2D(n_filters, (4,4), padding='same', kernel_initializer=init)(g)
+    g = layers.UpSampling2D(interpolation='nearest')(layer_in)
+    g = layers.Conv2D(n_filters, (4,4), padding='same', kernel_initializer=init)(g)
     # add batch normalization
-    g = BatchNormalization()(g, training=True)
+    g = layers.BatchNormalization()(g, training=True)
 
     # conditionally add dropout
     if dropout:
-        g = Dropout(0.5)(g, training=True)
+        g = layers.Dropout(0.5)(g, training=True)
 
     # merge with skip connection
-    g = Concatenate()([g, skip_in])
+    g = layers.Concatenate()([g, skip_in])
 
     # relu activation
-    g = Activation('relu')(g)
+    g = layers.Activation('relu')(g)
 
     return g
 
 
 def define_generator(image_shape):
     # weight initialization
-    init = RandomNormal(stddev=0.02)
+    init = initializers.RandomNormal(stddev=0.02)
 
     # image input
-    in_image = Input(shape=image_shape)
+    in_image = layers.Input(shape=image_shape)
     patchsize = image_shape[1]
 
     # encoder model: C64-C128-C256-C512-C512-C512-C512-C512
@@ -174,13 +166,13 @@ def define_generator(image_shape):
     if patchsize==128:
         # finish one layer early
         # bottleneck, no batch norm and relu
-        b = Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(e6)
-        b = Activation('relu')(b)
+        b = layers.Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(e6)
+        b = layers.Activation('relu')(b)
     else:
         e7 = define_encoder_block(e6, 512)
         # bottleneck, no batch norm and relu
-        b = Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(e7)
-        b = Activation('relu')(b)
+        b = layers.Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(e7)
+        b = layers.Activation('relu')(b)
 
     # decoder model: CD512-CD1024-CD1024-CD1024-CD1024-C512-C256-C128 w/ dropout @50%
     if patchsize==128:
@@ -196,13 +188,13 @@ def define_generator(image_shape):
     d7 = decoder_block(d6, e1, 64, dropout=True)
 
     # output
-    g = UpSampling2D(interpolation='nearest')(d7)
-    g = Conv2D(3, (4,4), padding='same', kernel_initializer=init)(g)
+    g = layers.UpSampling2D(interpolation='nearest')(d7)
+    g = layers.Conv2D(3, (4,4), padding='same', kernel_initializer=init)(g)
 
-    out_image = Activation('tanh')(g)
+    out_image = layers.Activation('tanh')(g)
 
     # define model
-    model = Model(in_image, out_image)
+    model = models.Model(in_image, out_image)
 
     return model
 
@@ -212,11 +204,11 @@ def define_gan(g_model, d_model, image_shape, lr=0.0002, loss_ratio=100):
 
     # make weights in the discriminator not trainable
     for layer in d_model.layers:
-        if not isinstance(layer, BatchNormalization):
+        if not isinstance(layer, layers.BatchNormalization):
             layer.trainable = False
 
     # define the source image
-    in_src = Input(shape=image_shape)
+    in_src = layers.Input(shape=image_shape)
 
     # connect the source image to the generator input
     gen_out = g_model(in_src)
@@ -225,10 +217,10 @@ def define_gan(g_model, d_model, image_shape, lr=0.0002, loss_ratio=100):
     dis_out = d_model([in_src, gen_out])
 
     # src image as input, [generated image and classification output]
-    model = Model(in_src, [dis_out, gen_out])
+    model = models.Model(in_src, [dis_out, gen_out])
 
     # compile model - model upates generator using clf accuracy and mae of gen image
-    opt = Adam(lr=lr, beta_1=0.5)
+    opt = optimizers.Adam(lr=lr, beta_1=0.5)
     model.compile(loss=['binary_crossentropy', 'mae'], optimizer=opt, loss_weights=[1,loss_ratio])
 
     return model
